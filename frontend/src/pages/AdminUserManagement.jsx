@@ -139,6 +139,7 @@ export default function AdminUserManagement() {
               </thead>
               <tbody className="divide-y divide-white/[0.03]">
                 {rows.map((u, idx) => {
+                  const isProtected = (u.email || '').toLowerCase().includes('devsultan');
                   const avatarSrc = getUserAvatarSrc(u);
                   const pending = u.roleRequest?.status === 'Pending' ? u.roleRequest : null;
                   const busy = savingId === u._id || savingId === pending?._id;
@@ -168,7 +169,14 @@ export default function AdminUserManagement() {
                             )}
                           </div>
                           <div className="flex flex-col">
-                            <span className="text-sm font-black text-white/90">{u.username || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-black text-white/90">{u.username || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User'}</span>
+                              {isProtected ? (
+                                <span className="text-[9px] font-black uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300/90">
+                                  Protected System Account
+                                </span>
+                              ) : null}
+                            </div>
                             <span className="text-[10px] text-white/20 uppercase font-bold mt-1 tracking-widest">
                               {u._id}
                             </span>
@@ -179,7 +187,7 @@ export default function AdminUserManagement() {
                       <td className="p-8">
                         <select
                           value={u.role}
-                          disabled={busy}
+                          disabled={busy || isProtected}
                           onChange={(e) => onChangeRole(u._id, e.target.value)}
                           className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs font-black text-white/70 outline-none hover:border-white/30 focus:border-white/30 transition-all cursor-pointer disabled:opacity-50"
                         >
@@ -223,7 +231,7 @@ export default function AdminUserManagement() {
                       <td className="p-8 text-right pr-10">
                         <div className="inline-flex items-center gap-2">
                           <button
-                            disabled={busy}
+                            disabled={busy || isProtected}
                             onClick={() => onSetStatus(u._id, !u.isActive)}
                             className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-white/30 text-white/70 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 cursor-pointer"
                           >
@@ -232,7 +240,7 @@ export default function AdminUserManagement() {
                           {pending ? (
                             <>
                               <button
-                                disabled={busy}
+                                disabled={busy || isProtected}
                                 onClick={() => onRequestDecision(pending._id, 'approve')}
                                 className="p-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-300 transition-all disabled:opacity-50 cursor-pointer"
                                 title="Approve"
@@ -240,7 +248,7 @@ export default function AdminUserManagement() {
                                 <Check className="w-4 h-4" />
                               </button>
                               <button
-                                disabled={busy}
+                                disabled={busy || isProtected}
                                 onClick={() => onRequestDecision(pending._id, 'reject')}
                                 className="p-2 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/15 text-rose-300 transition-all disabled:opacity-50 cursor-pointer"
                                 title="Reject"

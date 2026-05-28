@@ -149,12 +149,14 @@ const Hero = () => {
             className="text-4xl md:text-[64px] font-medium tracking-[-0.01em] leading-[1.1] mb-6 bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-transparent max-w-4xl"
           >
             <span
-              className="inline-flex align-top justify-start text-left whitespace-nowrap"
+              className="inline-flex align-top justify-center whitespace-nowrap w-full"
               style={{ minWidth: `${maxPhraseLen}ch` }}
               aria-label={phrases[0]}
             >
-              {rotatingText}
-              <span className="inline-block w-[1px] h-[0.9em] bg-white/40 align-[-0.08em] ml-1 animate-pulse" />
+              <span className="inline-flex justify-start text-left whitespace-nowrap" style={{ minWidth: `${maxPhraseLen}ch` }}>
+                {rotatingText}
+                <span className="inline-block w-[1px] h-[0.9em] bg-white/40 align-[-0.08em] ml-1 animate-pulse" />
+              </span>
             </span>
           </motion.h1>
         </div>

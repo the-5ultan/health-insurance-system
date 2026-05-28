@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
 const Claim = require('../models/Claim');
@@ -56,6 +57,11 @@ const requireAdmin = (req, res, next) => {
   if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: 'Unauthorized.' });
   if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Admin access required.' });
   return next();
+};
+
+const isProtectedSystemAccount = (user) => {
+  const email = (user?.email || '').toLowerCase();
+  return email.includes('devsultan');
 };
 
 /**
@@ -189,7 +195,14 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid or expired authorization code token." });
     }
 
-    res.json({ success: true, message: "OTP identity validation certified." });
+    // Issue a short-lived onboarding token for secure uploads before full auth
+    const onboardingUploadToken = jwt.sign(
+      { email: cleanEmail, purpose: 'onboarding-upload' },
+      process.env.SESSION_SECRET || 'carezone-secret-key',
+      { expiresIn: '20m' }
+    );
+
+    res.json({ success: true, message: "OTP identity validation certified.", onboardingUploadToken });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -397,7 +410,19 @@ router.get('/role-requests/me', async (req, res) => {
 
 router.post('/upload-profile-pic', upload.single('profilePic'), (req, res) => {
   try {
-    if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: "Unauthorized." });
+    // Allow authenticated uploads OR short-lived onboarding uploads
+    const token = req.headers['x-onboarding-upload-token'];
+    if (!req.isAuthenticated()) {
+      if (!token) return res.status(401).json({ success: false, message: "Unauthorized." });
+      try {
+        const decoded = jwt.verify(token, process.env.SESSION_SECRET || 'carezone-secret-key');
+        if (!decoded?.email || decoded.purpose !== 'onboarding-upload') {
+          return res.status(401).json({ success: false, message: "Unauthorized." });
+        }
+      } catch {
+        return res.status(401).json({ success: false, message: "Session expired. Please try again." });
+      }
+    }
     if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded." });
 
     const fileUrl = `http://localhost:5000/uploads/profiles/${req.file.filename}`;
@@ -575,6 +600,9 @@ router.put('/admin/users/:userId/role', requireAdmin, async (req, res) => {
 
     const target = await User.findById(req.params.userId);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (isProtectedSystemAccount(target)) {
+      return res.status(403).json({ success: false, message: 'Protected system account cannot be modified.' });
+    }
 
     const previousRole = target.role;
     target.role = role;
@@ -607,6 +635,9 @@ router.put('/admin/users/:userId/status', requireAdmin, async (req, res) => {
     const { isActive } = req.body;
     const target = await User.findById(req.params.userId);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (isProtectedSystemAccount(target)) {
+      return res.status(403).json({ success: false, message: 'Protected system account cannot be modified.' });
+    }
     target.isActive = Boolean(isActive);
     await target.save();
 
@@ -643,6 +674,9 @@ router.post('/admin/role-requests/:requestId/approve', requireAdmin, async (req,
 
     const target = await User.findById(request.userId);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (isProtectedSystemAccount(target)) {
+      return res.status(403).json({ success: false, message: 'Protected system account cannot be modified.' });
+    }
 
     const previousRole = target.role;
     request.status = 'Approved';
@@ -690,6 +724,9 @@ router.post('/admin/role-requests/:requestId/reject', requireAdmin, async (req, 
 
     const target = await User.findById(request.userId);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (isProtectedSystemAccount(target)) {
+      return res.status(403).json({ success: false, message: 'Protected system account cannot be modified.' });
+    }
 
     request.status = 'Rejected';
     await request.save();

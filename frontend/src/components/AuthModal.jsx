@@ -1,6 +1,6 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useRef, useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, Lock, User, Phone, MapPin, ArrowRight, Check, UserCircle, Globe, Camera, ShieldAlert } from 'lucide-react';
+import { X, Mail, Lock, User, Phone, MapPin, ArrowRight, Check, UserCircle, Globe, Camera, ShieldAlert, Info } from 'lucide-react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ImageCropModal from './ImageCropModal';
@@ -37,6 +37,12 @@ const AuthModal = () => {
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState('');
   const [cropFileType, setCropFileType] = useState('image/png');
+  const [onboardingUploadToken, setOnboardingUploadToken] = useState('');
+
+  const OTP_LEN = 6;
+  const [otpDigits, setOtpDigits] = useState(Array.from({ length: OTP_LEN }, () => ''));
+  const otpRefs = useRef([]);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [roleChoice, setRoleChoice] = useState('skip'); // skip | policyholder | hospital | officer
   const [roleDetails, setRoleDetails] = useState('');
@@ -83,6 +89,9 @@ const AuthModal = () => {
     setCropImageSrc('');
     setRoleChoice('skip');
     setRoleDetails('');
+    setOnboardingUploadToken('');
+    setOtpDigits(Array.from({ length: OTP_LEN }, () => ''));
+    setResendCooldown(0);
   }, [authView, isAuthModalOpen]);
 
   useEffect(() => {
@@ -201,6 +210,13 @@ const AuthModal = () => {
     setPreviewUrl(croppedPreviewUrl);
   };
 
+  useEffect(() => {
+    if (view !== 'signup-otp') return;
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [view, resendCooldown]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -231,9 +247,14 @@ const AuthModal = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const res = await verifyOtp(formData.email, formData.otpToken);
+    const joinedOtp = otpDigits.join('');
+    setFormData((prev) => ({ ...prev, otpToken: joinedOtp }));
+    const res = await verifyOtp(formData.email, joinedOtp);
     setLoading(false);
-    if (res.success) setView('signup-profile');
+    if (res.success) {
+      setOnboardingUploadToken(res.onboardingUploadToken || '');
+      setView('signup-profile');
+    }
     else setError(res.message);
   };
 
@@ -260,14 +281,14 @@ const AuthModal = () => {
     
     if (selectedFile) {
       setUploadingImage(true);
-      const uploadRes = await uploadProfilePic(selectedFile);
+      const uploadRes = await uploadProfilePic(selectedFile, { onboardingUploadToken });
       setUploadingImage(false);
       if (uploadRes.success) {
         currentProfilePic = uploadRes.url;
       } else {
-        setError(uploadRes.message || "Failed to upload profile picture.");
-        setLoading(false);
-        return;
+        // Do not crash signup — allow continuing without image.
+        setError(uploadRes.message || "Profile image upload failed. You can try again later.");
+        currentProfilePic = '';
       }
     }
     
@@ -466,17 +487,90 @@ const AuthModal = () => {
             )}
 
             {view === 'signup-otp' && (
-              <div className="relative">
-                <Check className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                <input
-                  type="text"
-                  placeholder="6-Digit Verification Token"
-                  required
-                  maxLength={6}
-                  value={formData.otpToken}
-                  onChange={(e) => setFormData({...formData, otpToken: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-lg outline-none focus:border-white/30 transition-all tracking-[0.5em] font-black text-center"
-                />
+              <div className="space-y-4">
+                <div className="flex items-center justify-center gap-3">
+                  {otpDigits.map((d, idx) => (
+                    <input
+                      key={idx}
+                      ref={(el) => (otpRefs.current[idx] = el)}
+                      inputMode="numeric"
+                      autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={d}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, '').slice(-1);
+                        setOtpDigits((prev) => {
+                          const next = [...prev];
+                          next[idx] = v;
+                          return next;
+                        });
+                        if (v && idx < OTP_LEN - 1) otpRefs.current[idx + 1]?.focus();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace') {
+                          if (otpDigits[idx]) {
+                            setOtpDigits((prev) => {
+                              const next = [...prev];
+                              next[idx] = '';
+                              return next;
+                            });
+                          } else if (idx > 0) {
+                            otpRefs.current[idx - 1]?.focus();
+                            setOtpDigits((prev) => {
+                              const next = [...prev];
+                              next[idx - 1] = '';
+                              return next;
+                            });
+                          }
+                        }
+                        if (e.key === 'ArrowLeft' && idx > 0) otpRefs.current[idx - 1]?.focus();
+                        if (e.key === 'ArrowRight' && idx < OTP_LEN - 1) otpRefs.current[idx + 1]?.focus();
+                      }}
+                      onPaste={(e) => {
+                        const pasted = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, OTP_LEN);
+                        if (!pasted) return;
+                        e.preventDefault();
+                        const next = Array.from({ length: OTP_LEN }, (_, i) => pasted[i] || '');
+                        setOtpDigits(next);
+                        const lastFilled = Math.min(pasted.length, OTP_LEN) - 1;
+                        otpRefs.current[Math.max(0, lastFilled)]?.focus();
+                      }}
+                      className="w-11 h-12 md:w-12 md:h-14 text-center text-lg font-black text-white bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white/30 focus:bg-white/[0.07] transition-all"
+                      aria-label={`OTP digit ${idx + 1}`}
+                      required
+                    />
+                  ))}
+                </div>
+
+                <div className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <Info className="w-4 h-4 text-white/30 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-white/35 font-medium leading-relaxed">
+                    Didn’t receive the email? Please also check your <span className="text-white/60 font-bold">Spam/Junk</span> folder.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    disabled={resendCooldown > 0 || loading}
+                    onClick={async () => {
+                      setError('');
+                      const res = await sendOtp(formData.email);
+                      if (res.success) {
+                        setResendCooldown(30);
+                      } else {
+                        setError(res.message || 'Failed to resend OTP.');
+                      }
+                    }}
+                    className="text-[10px] font-black uppercase tracking-[0.25em] text-white/40 hover:text-white transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
+                  </button>
+                  <span className="text-[10px] font-black uppercase tracking-[0.25em] text-white/20">
+                    {otpDigits.join('').length}/{OTP_LEN}
+                  </span>
+                </div>
               </div>
             )}
 
@@ -518,6 +612,22 @@ const AuthModal = () => {
                   <p className="text-[9px] text-white/25 font-black uppercase tracking-[0.25em] mt-3">
                     Profile photo optional
                   </p>
+                </div>
+
+                <div className="flex items-center justify-center gap-3 -mt-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (previewUrl) URL.revokeObjectURL(previewUrl);
+                      setSelectedFile(null);
+                      setPreviewUrl('');
+                      setFormData((prev) => ({ ...prev, profilePic: '' }));
+                      setError('');
+                    }}
+                    className="text-[10px] font-black uppercase tracking-[0.25em] text-rose-400/80 hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    Remove Photo
+                  </button>
                 </div>
 
                 {view !== 'onboarding' && (

@@ -109,12 +109,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const uploadProfilePic = async (file) => {
+  const uploadProfilePic = async (file, options = {}) => {
     try {
       const formData = new FormData();
       formData.append('profilePic', file);
       const res = await axios.post(`${API_URL}/auth/upload-profile-pic`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(options.onboardingUploadToken
+            ? { 'x-onboarding-upload-token': options.onboardingUploadToken }
+            : {})
+        }
       });
       return res.data;
     } catch (err) {
