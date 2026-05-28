@@ -534,7 +534,7 @@ router.get('/admin/summary', async (req, res) => {
 router.get('/admin/users', requireAdmin, async (req, res) => {
   try {
     const users = await User.find()
-      .select('firstName lastName username email profilePic role isActive updatedAt createdAt')
+      .select('firstName lastName username email googleId profilePic role isActive updatedAt createdAt')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -552,6 +552,7 @@ router.get('/admin/users', requireAdmin, async (req, res) => {
       success: true,
       users: users.map(u => ({
         ...u,
+        provider: u.googleId ? 'google' : 'email',
         roleRequest: pendingByUser.get(String(u._id)) || null
       }))
     });

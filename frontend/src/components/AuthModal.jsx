@@ -222,7 +222,9 @@ const AuthModal = () => {
     const res = await sendOtp(formData.email);
     setLoading(false);
     if (res.success) setView('signup-otp');
-    else setError(res.message);
+    else setError(res.message || (res.type === 'google'
+      ? "This email is already registered with Google Sign-In."
+      : "Email already in use."));
   };
 
   const handleVerifyOtp = async (e) => {
@@ -280,7 +282,9 @@ const AuthModal = () => {
     const res = await signup(payload);
     setLoading(false);
     if (res.success) setView('role-apply');
-    else setError(res.message);
+    else setError(res.message || (res.type === 'google'
+      ? "This email is already registered with Google Sign-In. Please continue with Cloud Identity."
+      : "Account already exists. Please log in instead."));
   };
 
   const handleUpdateProfile = async (e) => {

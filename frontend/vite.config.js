@@ -11,4 +11,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     '__BUNDLED_DEV__': mode === 'development',
   },
+  optimizeDeps: {
+    include: ['react-easy-crop'],
+  },
 }));

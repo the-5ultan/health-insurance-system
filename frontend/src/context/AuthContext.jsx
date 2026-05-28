@@ -82,7 +82,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.data.message };
     } catch (err) {
-      return { success: false, message: err.response?.data?.message || "Signup failed" };
+      return { success: false, message: err.response?.data?.message || "Signup failed", type: err.response?.data?.type };
     }
   };
 
@@ -127,7 +127,7 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post(`${API_URL}/auth/send-otp`, { email });
       return res.data;
     } catch (err) {
-      return { success: false, message: err.response?.data?.message || "Failed to send OTP" };
+      return { success: false, message: err.response?.data?.message || "Failed to send OTP", type: err.response?.data?.type };
     }
   };
 
@@ -137,6 +137,15 @@ export const AuthProvider = ({ children }) => {
       return res.data;
     } catch (err) {
       return { success: false, message: err.response?.data?.message || "Invalid OTP" };
+    }
+  };
+
+  const submitRoleRequest = async ({ requestedRole, details }) => {
+    try {
+      const res = await axios.post(`${API_URL}/auth/role-requests`, { requestedRole, details });
+      return res.data;
+    } catch (err) {
+      return { success: false, message: err.response?.data?.message || 'Failed to submit role request' };
     }
   };
 
@@ -151,6 +160,7 @@ export const AuthProvider = ({ children }) => {
       verifyOtp,
       updateProfile,
       uploadProfilePic,
+      submitRoleRequest,
       isAuthModalOpen,
       authView,
       initialEmail,

@@ -24,7 +24,7 @@ export default function AdminUserManagement() {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.get(`${API}/auth/admin/users`);
+      const res = await axios.get(`${API}/auth/admin/users`, { withCredentials: true });
       if (res.data?.success) setUsers(res.data.users || []);
       else setError(res.data?.message || 'Failed to load users.');
     } catch (e) {
@@ -42,7 +42,7 @@ export default function AdminUserManagement() {
     setSavingId(userId);
     setError('');
     try {
-      const res = await axios.put(`${API}/auth/admin/users/${userId}/role`, { role: nextRole });
+      const res = await axios.put(`${API}/auth/admin/users/${userId}/role`, { role: nextRole }, { withCredentials: true });
       if (!res.data?.success) throw new Error(res.data?.message || 'Role update failed.');
       setUsers((prev) =>
         prev.map((u) => (u._id === userId ? { ...u, role: res.data.user.role, updatedAt: res.data.user.updatedAt } : u))
@@ -58,7 +58,7 @@ export default function AdminUserManagement() {
     setSavingId(userId);
     setError('');
     try {
-      const res = await axios.put(`${API}/auth/admin/users/${userId}/status`, { isActive });
+      const res = await axios.put(`${API}/auth/admin/users/${userId}/status`, { isActive }, { withCredentials: true });
       if (!res.data?.success) throw new Error(res.data?.message || 'Status update failed.');
       setUsers((prev) =>
         prev.map((u) => (u._id === userId ? { ...u, isActive: res.data.user.isActive, updatedAt: res.data.user.updatedAt } : u))
@@ -74,7 +74,7 @@ export default function AdminUserManagement() {
     setSavingId(requestId);
     setError('');
     try {
-      const res = await axios.post(`${API}/auth/admin/role-requests/${requestId}/${action}`);
+      const res = await axios.post(`${API}/auth/admin/role-requests/${requestId}/${action}`, {}, { withCredentials: true });
       if (!res.data?.success) throw new Error(res.data?.message || 'Request update failed.');
       await fetchUsers();
     } catch (e) {
@@ -132,6 +132,7 @@ export default function AdminUserManagement() {
                   <th className="p-8">Email</th>
                   <th className="p-8">Role</th>
                   <th className="p-8">Status</th>
+                  <th className="p-8">Provider</th>
                   <th className="p-8">Role Request</th>
                   <th className="p-8 text-right pr-10">Actions</th>
                 </tr>
@@ -201,6 +202,11 @@ export default function AdminUserManagement() {
                         </span>
                       </td>
                       <td className="p-8">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                          {(u.provider || (u.googleId ? 'google' : 'email')).toString()}
+                        </span>
+                      </td>
+                      <td className="p-8">
                         {pending ? (
                           <div className="flex flex-col gap-1">
                             <span className="text-[10px] font-black uppercase tracking-widest text-amber-300/90">
@@ -250,7 +256,7 @@ export default function AdminUserManagement() {
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan="6" className="p-20 text-center text-white/10 italic text-sm font-bold uppercase tracking-widest">
+                    <td colSpan="7" className="p-20 text-center text-white/10 italic text-sm font-bold uppercase tracking-widest">
                       No registered users found.
                     </td>
                   </tr>
