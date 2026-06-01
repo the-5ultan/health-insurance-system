@@ -5,6 +5,34 @@ import axios from 'axios';
 axios.defaults.withCredentials = true;
 const API_URL = 'http://localhost:5000';
 
+// Axios interceptor to add Authorization header with token
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Axios interceptor for error handling
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      // If we are not on the homepage, redirect to login
+      if (window.location.pathname !== '/') {
+        localStorage.removeItem('authToken');
+        window.location.href = '/';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -18,9 +46,16 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // Fetch current user (axios interceptor will attach token if exists)
         const res = await axios.get(`${API_URL}/auth/current-user`);
+        
         if (res.data.loggedIn) {
           setUser(res.data.user);
+          
+          // Store/Refresh token in localStorage if returned by backend
+          if (res.data.token) {
+            localStorage.setItem('authToken', res.data.token);
+          }
           
           // Check for onboarding redirect
           const params = new URLSearchParams(window.location.search);
@@ -29,6 +64,9 @@ export const AuthProvider = ({ children }) => {
             setIsAuthModalOpen(true);
           }
         } else {
+          // Not logged in, clear any stale token
+          localStorage.removeItem('authToken');
+          
           // Even if not logged in, if view=onboarding is requested, show modal
           const params = new URLSearchParams(window.location.search);
           if (params.get('view') === 'onboarding') {
@@ -38,6 +76,10 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (err) {
         console.error("Auth check failed:", err);
+        // Only clear token if it's definitely an auth error (e.g. 401/403)
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          localStorage.removeItem('authToken');
+        }
       } finally {
         setLoading(false);
       }
@@ -61,6 +103,10 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
       if (res.data.success) {
         setUser(res.data.user);
+        // Store the token in localStorage
+        if (res.data.token) {
+          localStorage.setItem('authToken', res.data.token);
+        }
         if (!res.data.user.username) {
           setAuthView('onboarding');
           setIsAuthModalOpen(true);
@@ -78,6 +124,10 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post(`${API_URL}/auth/finalize-signup`, formData);
       if (res.data.success) {
         setUser(res.data.user);
+        // Store the token in localStorage
+        if (res.data.token) {
+          localStorage.setItem('authToken', res.data.token);
+        }
         return { success: true };
       }
       return { success: false, message: res.data.message };
@@ -90,9 +140,13 @@ export const AuthProvider = ({ children }) => {
     try {
       await axios.get(`${API_URL}/auth/logout`);
       setUser(null);
+      localStorage.removeItem('authToken');
       window.location.href = '/';
     } catch (err) {
       console.error("Logout failed:", err);
+      setUser(null);
+      localStorage.removeItem('authToken');
+      window.location.href = '/';
     }
   };
 

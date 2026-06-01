@@ -53,10 +53,30 @@ const {
 } = require('../services/emailService');
 const RoleRequest = require('../models/RoleRequest');
 
-const requireAdmin = (req, res, next) => {
-  if (!req.isAuthenticated()) return res.status(401).json({ success: false, message: 'Unauthorized.' });
-  if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Admin access required.' });
-  return next();
+const requireAdmin = async (req, res, next) => {
+  try {
+    // 1. Check Session
+    if (req.isAuthenticated() && req.user.role === 'admin') {
+      return next();
+    }
+
+    // 2. Check JWT if session fails
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key_2026');
+      const user = await User.findById(decoded.id);
+      
+      if (user && user.role === 'admin' && user.isActive) {
+        req.user = user;
+        return next();
+      }
+    }
+
+    return res.status(403).json({ success: false, message: 'Admin access required.' });
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Unauthorized or session expired.' });
+  }
 };
 
 const isProtectedSystemAccount = (user) => {
@@ -159,8 +179,6 @@ router.post('/send-otp', async (req, res) => {
     }
 
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    console.log(`\n🔑 [DEV DEBUG] Active OTP Code generated for ${cleanEmail} is: ${otpCode}\n`);
     
     await OTP.deleteMany({ email: cleanEmail });
     const newOTP = new OTP({ email: cleanEmail, code: otpCode });
@@ -269,6 +287,13 @@ router.post('/finalize-signup', async (req, res) => {
         return res.status(500).json({ success: false, error: "Auto-login establishment failure." });
       }
 
+      // Generate JWT token for API authentication
+      const token = jwt.sign(
+        { id: newUser._id, email: newUser.email, role: newUser.role },
+        process.env.JWT_SECRET || 'fallback_secret_key_2026',
+        { expiresIn: '30d' }
+      );
+
       // Send Welcome & Signup Confirmation Email (Async)
       sendEmail(
         newUser.email,
@@ -279,7 +304,8 @@ router.post('/finalize-signup', async (req, res) => {
       return res.status(201).json({ 
         success: true, 
         message: "Account created and logged in successfully!", 
-        user: newUser 
+        user: newUser,
+        token
       });
     });
   } catch (error) {
@@ -325,6 +351,13 @@ router.post('/login', async (req, res) => {
         return res.status(500).json({ success: false, error: "Login session establishment failure." });
       }
 
+      // Generate JWT token for API authentication
+      const token = jwt.sign(
+        { id: user._id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'fallback_secret_key_2026',
+        { expiresIn: '30d' }
+      );
+
       // Send Login Confirmation Email (Async)
       sendEmail(
         user.email,
@@ -332,7 +365,12 @@ router.post('/login', async (req, res) => {
         getWelcomeTemplate(user)
       );
 
-      return res.json({ success: true, message: "Logged in successfully!", user });
+      res.json({
+        success: true,
+        message: "Logged in successfully!",
+        user: user,
+        token: token
+      });
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -342,15 +380,49 @@ router.post('/login', async (req, res) => {
 /**
  * 6. STANDARD SESSIONS INTERACTION MANAGERS
  */
-router.get('/current-user', (req, res) => { 
-  if (req.isAuthenticated()) { 
-    if (req.user?.isActive === false) {
-      return req.logout(() => res.json({ loggedIn: false }));
+router.get('/current-user', async (req, res) => { 
+  try {
+    let user = null;
+
+    // 1. Check Passport Session
+    if (req.isAuthenticated()) { 
+      user = req.user;
+    } 
+    
+    // 2. Check JWT Header if session not present or to refresh token
+    const authHeader = req.headers.authorization;
+    if (!user && authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key_2026');
+        user = await User.findById(decoded.id);
+      } catch (err) {
+        // Token might be expired, which is fine if we check session
+      }
     }
-    res.json({ loggedIn: true, user: req.user }); 
-  } else { 
+
+    if (user) {
+      if (user.isActive === false) {
+        if (req.isAuthenticated()) {
+          return req.logout(() => res.json({ loggedIn: false, message: "Account is disabled." }));
+        }
+        return res.json({ loggedIn: false, message: "Account is disabled." });
+      }
+
+      // Generate or Refresh JWT token
+      const token = jwt.sign(
+        { id: user._id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'fallback_secret_key_2026',
+        { expiresIn: '30d' }
+      );
+
+      return res.json({ loggedIn: true, user, token }); 
+    }
+
     res.json({ loggedIn: false }); 
-  } 
+  } catch (error) {
+    res.status(500).json({ loggedIn: false, error: error.message });
+  }
 });
 
 /**
@@ -488,12 +560,8 @@ router.post('/complete-profile', async (req, res) => {
   }
 });
 
-router.get('/admin/summary', async (req, res) => {
+router.get('/admin/summary', requireAdmin, async (req, res) => {
   try {
-    if (!req.isAuthenticated() || req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: "Admin access required." });
-    }
-
     const now = new Date();
     const [
       totalUsers,
@@ -775,6 +843,18 @@ router.get('/logout', (req, res, next) => {
     if (err) return next(err); 
     res.redirect('http://localhost:5173'); 
   }); 
+});
+
+// TEST ENDPOINT: Verify JWT token generation
+router.get('/test-token', (req, res) => {
+  const testToken = jwt.sign(
+    { id: 'test-id', email: 'test@example.com', role: 'test' },
+    process.env.JWT_SECRET || 'fallback_secret_key_2026',
+    { expiresIn: '30d' }
+  );
+  
+  const response = { token: testToken, success: true };
+  res.json(response);
 });
 
 module.exports = router;

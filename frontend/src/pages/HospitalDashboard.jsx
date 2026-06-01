@@ -29,7 +29,13 @@ export default function HospitalDashboard() {
       const res = await axios.get('http://localhost:5000/api/claims/queue');
       setClaims(res.data);
     } catch (err) {
-      console.error(err);
+      if (err.response?.status === 401) {
+        setError('Your session has expired. Please log in again.');
+      } else if (err.response?.status === 403) {
+        setError('Unauthorized: You do not have permission to view these records.');
+      } else {
+        setError('Failed to synchronize with healthcare node. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -52,7 +58,7 @@ export default function HospitalDashboard() {
 
     try {
       const res = await axios.post('http://localhost:5000/api/claims/submit', formData);
-      setSuccess(`Claim ${res.data.claim.claimNumber} logged. Risk Evaluation: ${res.data.claim.fraudRiskLevel}`);
+      setSuccess(`Claim ${res.data.claim.claimNumber} submitted successfully. Risk Level: ${res.data.claim.fraudRiskLevel}`);
       setFormData({
         patientName: '',
         policyNumber: '',
@@ -65,7 +71,16 @@ export default function HospitalDashboard() {
       setShowForm(false);
       fetchHospitalClaims();
     } catch (err) {
-      setError(err.response?.data?.message || "Protocol rejection: verify policy constraints.");
+      console.error('[HospitalDashboard] Submit error:', err);
+      if (err.response?.status === 401) {
+        setError('Your session has expired. Please log in again.');
+      } else if (err.response?.status === 403) {
+        setError('You are not authorized to submit claims. Please contact support.');
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Failed to submit claim. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }

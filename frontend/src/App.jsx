@@ -36,13 +36,16 @@ const Home = () => {
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useContext(AuthContext);
 
-  if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin" />
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
   
   if (!user) return <Navigate to="/" />;
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     // If they are on the wrong dashboard, send them to their own
     return <Navigate to="/dashboard" />;
