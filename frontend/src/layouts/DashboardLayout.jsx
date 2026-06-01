@@ -7,6 +7,7 @@ import {
   Hospital, 
   UserCircle, 
   Users,
+  Database,
   LogOut, 
   Menu, 
   X, 
@@ -36,6 +37,12 @@ const DashboardLayout = ({ children, title }) => {
       label: 'User Management',
       icon: Users,
       path: '/admin/users',
+      roles: ['admin']
+    },
+    {
+      label: 'Policy Architecture',
+      icon: Database,
+      path: '/admin/policies',
       roles: ['admin']
     },
     { 

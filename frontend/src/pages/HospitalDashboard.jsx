@@ -13,6 +13,8 @@ export default function HospitalDashboard() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [policies, setPolicies] = useState([]);
+  const [selectedPolicy, setSelectedPolicy] = useState(null);
 
   const [formData, setFormData] = useState({
     patientName: '',
@@ -24,9 +26,18 @@ export default function HospitalDashboard() {
     supportingDocuments: []
   });
 
+  const fetchPolicies = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/claims/policies', { withCredentials: true });
+      setPolicies(res.data);
+    } catch (err) {
+      console.error('Failed to fetch policy nodes:', err);
+    }
+  };
+
   const fetchHospitalClaims = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/claims/queue');
+      const res = await axios.get('http://localhost:5000/api/claims/queue', { withCredentials: true });
       setClaims(res.data);
     } catch (err) {
       if (err.response?.status === 401) {
@@ -43,11 +54,17 @@ export default function HospitalDashboard() {
 
   useEffect(() => {
     fetchHospitalClaims();
+    fetchPolicies();
   }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+
+    if (name === 'policyNumber') {
+      const policy = policies.find(p => p.policyNumber === value);
+      setSelectedPolicy(policy || null);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -57,7 +74,21 @@ export default function HospitalDashboard() {
     setSuccess('');
 
     try {
-      const res = await axios.post('http://localhost:5000/api/claims/submit', formData);
+      const data = new FormData();
+      Object.keys(formData).forEach(key => {
+        if (key === 'supportingDocuments') {
+          formData.supportingDocuments.forEach(file => {
+            data.append('documents', file);
+          });
+        } else {
+          data.append(key, formData[key]);
+        }
+      });
+
+      const res = await axios.post('http://localhost:5000/api/claims/submit', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true
+      });
       setSuccess(`Claim ${res.data.claim.claimNumber} submitted successfully. Risk Level: ${res.data.claim.fraudRiskLevel}`);
       setFormData({
         patientName: '',
@@ -154,6 +185,13 @@ export default function HospitalDashboard() {
                 <ClipboardList className="w-6 h-6 text-blue-500" />
                 System Claim Matrix
               </h2>
+
+              {policies.length === 0 && !loading && (
+                <div className="mb-8 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-[10px] font-black uppercase tracking-widest flex items-center gap-3">
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  No policy configurations are available. Please create a policy configuration first.
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
                 <div className="space-y-3">
@@ -166,19 +204,36 @@ export default function HospitalDashboard() {
                 </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-2">Policy Node Identifier</label>
-                  <input 
+                  <select 
                     name="policyNumber" required value={formData.policyNumber} onChange={handleInputChange}
-                    className="w-full bg-white/5 border border-white/5 rounded-2xl py-4 px-6 text-white text-sm font-medium focus:border-white/20 outline-none transition-all placeholder-white/10 shadow-inner"
-                    placeholder="POL-XXXXXX"
-                  />
+                    className="w-full bg-white/5 border border-white/5 rounded-2xl py-4 px-6 text-white text-sm font-medium focus:border-white/20 outline-none transition-all shadow-inner appearance-none cursor-pointer"
+                  >
+                    <option value="" className="bg-black text-white/40">Select Policy Node</option>
+                    {policies.length > 0 ? (
+                      policies.map(p => (
+                        <option key={p.policyNumber} value={p.policyNumber} className="bg-black text-white">
+                          {p.policyNumber} - {p.holderName}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled className="bg-black text-rose-400">No active policy nodes found</option>
+                    )}
+                  </select>
                 </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-2">Clinical Classification</label>
-                  <input 
+                  <select 
                     name="treatmentType" required value={formData.treatmentType} onChange={handleInputChange}
-                    placeholder="e.g., NEUROLOGY_OP"
-                    className="w-full bg-white/5 border border-white/5 rounded-2xl py-4 px-6 text-white text-sm font-medium focus:border-white/20 outline-none transition-all placeholder-white/10 shadow-inner"
-                  />
+                    disabled={!selectedPolicy}
+                    className="w-full bg-white/5 border border-white/5 rounded-2xl py-4 px-6 text-white text-sm font-medium focus:border-white/20 outline-none transition-all shadow-inner appearance-none cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <option value="" className="bg-black text-white/40">
+                      {!selectedPolicy ? "Select Policy First" : "Select Treatment"}
+                    </option>
+                    {selectedPolicy?.coverageDetails?.eligibleTreatments?.map(t => (
+                      <option key={t} value={t} className="bg-black text-white">{t}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-3 lg:col-span-2">
                   <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-2">Diagnostic Summary</label>
@@ -199,6 +254,23 @@ export default function HospitalDashboard() {
                     />
                   </div>
                 </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-2">Supporting Documentation</label>
+                  <div className="relative">
+                    <input 
+                      type="file" multiple 
+                      onChange={(e) => setFormData(prev => ({ ...prev, supportingDocuments: Array.from(e.target.files) }))}
+                      className="hidden" id="file-upload"
+                    />
+                    <label 
+                      htmlFor="file-upload"
+                      className="w-full bg-white/5 border border-white/5 rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest hover:border-white/20 transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      {formData.supportingDocuments.length > 0 ? `${formData.supportingDocuments.length} Files Selected` : 'Select PDF / Images'}
+                      <FileText className="w-4 h-4 text-white/20" />
+                    </label>
+                  </div>
+                </div>
                 <div className="lg:col-span-3 flex justify-end gap-6 mt-10 border-t border-white/5 pt-10">
                   <button 
                     type="button" onClick={() => setShowForm(false)}
@@ -207,7 +279,7 @@ export default function HospitalDashboard() {
                     Cancel Operations
                   </button>
                   <button 
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !formData.policyNumber || !formData.treatmentType}
                     className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-500 transition-all flex items-center gap-3 disabled:opacity-50 shadow-xl shadow-blue-500/20 active:scale-[0.98] cursor-pointer"
                   >
                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

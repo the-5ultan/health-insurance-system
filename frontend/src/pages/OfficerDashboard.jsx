@@ -143,6 +143,14 @@ export default function OfficerDashboard() {
                         </button>
                         <button 
                           disabled={processingId === claim._id}
+                          onClick={() => processClaim(claim._id, 'Information Requested')}
+                          className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500 hover:text-white transition-all active:scale-95 border border-blue-500/20 cursor-pointer shadow-lg shadow-blue-500/5"
+                          title="Request Additional Information"
+                        >
+                          {processingId === claim._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                        </button>
+                        <button 
+                          disabled={processingId === claim._id}
                           onClick={() => processClaim(claim._id, 'Rejected')}
                           className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-500 hover:text-white transition-all active:scale-95 border border-rose-500/20 cursor-pointer shadow-lg shadow-rose-500/5"
                           title="Flag & Reject"

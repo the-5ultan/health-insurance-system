@@ -7,30 +7,45 @@ exports.submitClaim = async (req, res) => {
   try {
     const { 
       patientName, policyNumber, treatmentType, 
-      diagnosis, treatmentCost, dateOfTreatment, supportingDocuments 
+      diagnosis, treatmentCost, dateOfTreatment 
     } = req.body;
 
+    const supportingDocuments = req.files ? req.files.map(f => f.path) : [];
+
+    console.log(`[ClaimController] Ingestion Request Received. Node: ${req.user.username}, Policy Number: ${policyNumber}, Files: ${supportingDocuments.length}`);
+
     let policy = await Policy.findOne({ policyNumber });
-    if (!policy && req.user.role === 'policyholder') {
-      // Auto-create a high-limit policy for the policyholder
-      const fullName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
-      policy = new Policy({
-        policyNumber: policyNumber || ('POL-' + Math.floor(100000 + Math.random() * 900000)),
-        holderName: fullName || req.user.username || req.user.email,
-        coverageDetails: {
-          maxLimit: 500000,
-          utilizedAmount: 0,
-          eligibleTreatments: ['Dental', 'Cardiology', 'Ophthalmology', 'Neurology', 'Surgery', 'General Consultation', 'PEDIATRICS', 'NEUROLOGY_OP']
-        },
-        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
-        status: 'active'
-      });
-      await policy.save();
+    
+    if (!policy) {
+      console.warn(`[ClaimController] Policy Lookup Failed: No active record found for identifier '${policyNumber}'`);
+      
+      if (req.user.role === 'policyholder') {
+        console.log(`[ClaimController] Auto-provisioning emergency policy for policyholder: ${req.user.email}`);
+        const fullName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+        policy = new Policy({
+          policyNumber: policyNumber || ('POL-' + Math.floor(100000 + Math.random() * 900000)),
+          holderName: fullName || req.user.username || req.user.email,
+          coverageDetails: {
+            maxLimit: 500000,
+            utilizedAmount: 0,
+            eligibleTreatments: ['Dental', 'Cardiology', 'Ophthalmology', 'Neurology', 'Surgery', 'General Consultation', 'PEDIATRICS', 'NEUROLOGY_OP']
+          },
+          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+          status: 'active'
+        });
+        await policy.save();
+      }
     }
 
     if (!policy) {
-      return res.status(404).json({ message: 'Referenced policy configuration entity not found.' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Referenced policy configuration entity not found.',
+        detail: `The system could not locate a policy matching node identifier '${policyNumber}'. Please verify your credentials or select a valid policy node.`
+      });
     }
+
+    console.log(`[ClaimController] Policy validated: ${policy._id}. Checking constraints...`);
 
     if (policy.status !== 'active' || new Date(policy.expiryDate) < new Date()) {
       return res.status(400).json({ message: 'Underlying policy constraint verification failed: State Expired/Inactive.' });
@@ -208,7 +223,52 @@ exports.updateClaimStatus = async (req, res) => {
     });
 
     return res.status(200).json({ message: 'Claim status updated successfully.', claim });
-  } catch (error) {
+    } catch (error) {
     return res.status(500).json({ message: 'State machine mutation failure.', error: error.message });
+    }
+    };
+
+exports.getPolicies = async (req, res) => {
+  try {
+    const policies = await Policy.find({ status: 'active' }).select('policyNumber holderName coverageDetails');
+    return res.status(200).json(policies);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to retrieve active policy configurations.', error: error.message });
   }
 };
+
+exports.createPolicy = async (req, res) => {
+  try {
+    const { policyNumber, holderName, maxLimit, eligibleTreatments, expiryDate } = req.body;
+
+        const existing = await Policy.findOne({ policyNumber });
+        if (existing) return res.status(400).json({ message: 'Policy identifier already exists in the cluster.' });
+
+        const policy = new Policy({
+          policyNumber,
+          holderName,
+          coverageDetails: {
+            maxLimit,
+            utilizedAmount: 0,
+            eligibleTreatments: eligibleTreatments || []
+          },
+          expiryDate,
+          status: 'active'
+        });
+
+        await policy.save();
+
+        await AuditLog.create({
+          userId: req.user._id,
+          action: 'POLICY_PROVISIONING',
+          resource: 'Policy',
+          resourceId: policy._id,
+          description: `New policy ${policyNumber} provisioned for ${holderName}. Limit: $${maxLimit}`,
+          ipAddress: req.ip
+        });
+
+        return res.status(201).json({ message: 'Policy provisioned successfully.', policy });
+      } catch (error) {
+        return res.status(500).json({ message: 'Policy creation failure.', error: error.message });
+      }
+    };

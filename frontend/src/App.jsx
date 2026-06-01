@@ -7,6 +7,7 @@ import Services from './components/Services';
 import OfficerDashboard from './pages/OfficerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUserManagement from './pages/AdminUserManagement';
+import AdminPolicyManagement from './pages/AdminPolicyManagement';
 import HospitalDashboard from './pages/HospitalDashboard';
 import PolicyholderDashboard from './pages/PolicyholderDashboard';
 import AuthModal from './components/AuthModal';
@@ -90,6 +91,12 @@ const AppContent = () => {
         <Route path="/admin/users" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminUserManagement />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/policies" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminPolicyManagement />
           </ProtectedRoute>
         } />
         
