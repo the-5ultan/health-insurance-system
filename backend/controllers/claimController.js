@@ -228,6 +228,88 @@ exports.updateClaimStatus = async (req, res) => {
     }
     };
 
+exports.requestMoreInfo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message, requestedDocumentTypes } = req.body;
+    console.log(`[ClaimController] requestMoreInfo START. ID: ${id}, Sender: ${req.user?._id}`);
+
+    const claim = await Claim.findById(id);
+    if (!claim) {
+      console.error(`[ClaimController] Claim NOT FOUND in DB for ID: ${id}`);
+      return res.status(404).json({ message: 'Claim instance target entity missing.' });
+    }
+
+    console.log(`[ClaimController] Claim found: ${claim.claimNumber}. Updating status and history...`);
+    claim.status = 'Information Requested';
+    claim.interactions.push({
+      type: 'request',
+      senderId: req.user._id,
+      message,
+      requestedDocumentTypes: requestedDocumentTypes || []
+    });
+
+    await claim.save();
+    console.log(`[ClaimController] Claim saved successfully.`);
+
+    await AuditLog.create({
+      userId: req.user._id,
+      action: 'CLAIM_INFO_REQUESTED',
+      resource: 'Claim',
+      resourceId: claim._id,
+      description: `Requested more info for ${claim.claimNumber}. Message: ${message}`,
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({ message: 'Information request broadcasted.', claim });
+  } catch (error) {
+    console.error(`[ClaimController] requestMoreInfo FATAL ERROR:`, error);
+    return res.status(500).json({ message: 'Failed to request more information.', error: error.message });
+  }
+};
+
+exports.submitClaimResponse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const attachments = req.files ? req.files.map(f => f.path) : [];
+    console.log(`[ClaimController] Info Submission Received for ${id}. Sender: ${req.user?._id}`);
+
+    const claim = await Claim.findById(id);
+    if (!claim) return res.status(404).json({ message: 'Claim instance target entity missing.' });
+
+    claim.status = 'Information Submitted';
+    claim.interactions.push({
+      type: 'response',
+      senderId: req.user._id,
+      message,
+      attachments
+    });
+
+    // Also add attachments to supportingDocuments if they should be part of the main record
+    if (attachments.length > 0) {
+      claim.supportingDocuments = [...claim.supportingDocuments, ...attachments];
+    }
+
+    await claim.save();
+
+    await AuditLog.create({
+      userId: req.user._id,
+      action: 'CLAIM_INFO_SUBMITTED',
+      resource: 'Claim',
+      resourceId: claim._id,
+      description: `Information submitted for ${claim.claimNumber}. Response: ${message}`,
+      ipAddress: req.ip
+    });
+
+    console.log(`[ClaimController] Info Submission finalized for ${claim.claimNumber}`);
+    return res.status(200).json({ message: 'Information submitted successfully.', claim });
+  } catch (error) {
+    console.error(`[ClaimController] SubmitClaimResponse Error:`, error);
+    return res.status(500).json({ message: 'Failed to submit information.', error: error.message });
+  }
+};
+
 exports.getPolicies = async (req, res) => {
   try {
     const policies = await Policy.find({ status: 'active' }).select('policyNumber holderName coverageDetails');

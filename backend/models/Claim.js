@@ -12,9 +12,17 @@ const ClaimSchema = new mongoose.Schema({
   supportingDocuments: [{ type: String }], // URL paths to uploaded files
   status: { 
     type: String, 
-    enum: ['Pending Validation', 'Under Review', 'Approved', 'Rejected', 'Information Requested'], 
+    enum: ['Pending Validation', 'Under Review', 'Approved', 'Rejected', 'Information Requested', 'Information Submitted'], 
     default: 'Pending Validation' 
   },
+  interactions: [{
+    type: { type: String, enum: ['request', 'response'] },
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    message: String,
+    requestedDocumentTypes: [String],
+    attachments: [String], // for hospital response files
+    createdAt: { type: Date, default: Date.now }
+  }],
   officerNotes: { type: String, default: '' },
   fraudScore: { type: Number, default: 0 },
   fraudRiskLevel: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Low' }
