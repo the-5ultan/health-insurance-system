@@ -46,6 +46,17 @@ export default function HospitalDashboard() {
     try {
       const res = await axios.get('http://localhost:5000/api/claims/queue', { withCredentials: true });
       setClaims(res.data);
+      
+      // Auto-mark unresolved requests as RECEIVED
+      res.data.forEach(claim => {
+        if (claim.status === 'Information Requested') {
+          const lastRequest = claim.interactions?.filter(i => i.type === 'request').pop();
+          if (lastRequest && !lastRequest.receivedAt) {
+            axios.patch(`http://localhost:5000/api/claims/${claim._id}/interactions/${lastRequest._id}/receive`, {}, { withCredentials: true })
+              .catch(err => console.error('Failed to mark as received:', err));
+          }
+        }
+      });
     } catch (err) {
       console.error('[HospitalDashboard] Fetch claims failure:', err);
       if (err.response?.status === 401) {
@@ -64,6 +75,19 @@ export default function HospitalDashboard() {
     fetchHospitalClaims();
     fetchPolicies();
   }, []);
+
+  const handleOpenResponseModal = (claim) => {
+    setSelectedClaim(claim);
+    setShowResponseModal(true);
+    
+    // Mark as OPENED
+    const lastRequest = claim.interactions?.filter(i => i.type === 'request').pop();
+    if (lastRequest && !lastRequest.openedAt) {
+      axios.patch(`http://localhost:5000/api/claims/${claim._id}/interactions/${lastRequest._id}/open`, {}, { withCredentials: true })
+        .then(() => fetchHospitalClaims()) // Refresh to get updated timestamps if needed
+        .catch(err => console.error('Failed to mark as opened:', err));
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -612,10 +636,7 @@ export default function HospitalDashboard() {
 
                           {claim.status === 'Information Requested' && (
                             <button 
-                              onClick={() => {
-                                setSelectedClaim(claim);
-                                setShowResponseModal(true);
-                              }}
+                              onClick={() => handleOpenResponseModal(claim)}
                               className="px-4 py-1.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all text-[9px] font-black uppercase tracking-widest cursor-pointer active:scale-95 shadow-lg shadow-blue-500/10"
                             >
                               Respond

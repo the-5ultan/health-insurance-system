@@ -287,6 +287,12 @@ exports.submitClaimResponse = async (req, res) => {
       attachments
     });
 
+    // Mark the last 'request' as replied
+    const lastRequest = [...claim.interactions].reverse().find(i => i.type === 'request');
+    if (lastRequest) {
+      lastRequest.repliedAt = new Date();
+    }
+
     // Also add attachments to supportingDocuments if they should be part of the main record
     if (attachments.length > 0) {
       claim.supportingDocuments = [...claim.supportingDocuments, ...attachments];
@@ -308,6 +314,89 @@ exports.submitClaimResponse = async (req, res) => {
   } catch (error) {
     console.error(`[ClaimController] SubmitClaimResponse Error:`, error);
     return res.status(500).json({ message: 'Failed to submit information.', error: error.message });
+  }
+};
+
+exports.markInteractionReceived = async (req, res) => {
+  try {
+    const { claimId, interactionId } = req.params;
+    const claim = await Claim.findById(claimId);
+    if (!claim) return res.status(404).json({ message: 'Claim not found' });
+
+    const interaction = claim.interactions.id(interactionId);
+    if (!interaction) return res.status(404).json({ message: 'Interaction not found' });
+
+    if (!interaction.receivedAt) {
+      interaction.receivedAt = new Date();
+      interaction.receivedBy = req.user._id;
+      await claim.save();
+    }
+
+    return res.status(200).json({ message: 'Marked as received' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.markInteractionOpened = async (req, res) => {
+  try {
+    const { claimId, interactionId } = req.params;
+    const claim = await Claim.findById(claimId);
+    if (!claim) return res.status(404).json({ message: 'Claim not found' });
+
+    const interaction = claim.interactions.id(interactionId);
+    if (!interaction) return res.status(404).json({ message: 'Interaction not found' });
+
+    if (!interaction.openedAt) {
+      interaction.openedAt = new Date();
+      await claim.save();
+    }
+
+    return res.status(200).json({ message: 'Marked as opened' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getCommunicationStats = async (req, res) => {
+  try {
+    const officerId = req.user._id;
+    
+    // Find claims where this officer has sent requests
+    const claims = await Claim.find({
+      'interactions': {
+        $elemMatch: { type: 'request', senderId: officerId }
+      }
+    });
+
+    let pendingReplies = 0;
+    let newlyOpened = 0;
+    let unresolved = 0;
+
+    claims.forEach(claim => {
+      const requests = claim.interactions.filter(i => i.type === 'request' && i.senderId.toString() === officerId.toString());
+      const lastRequest = requests[requests.length - 1];
+
+      if (lastRequest) {
+        if (claim.status === 'Information Requested') {
+          unresolved++;
+          if (!lastRequest.repliedAt) {
+            pendingReplies++;
+          }
+          if (lastRequest.openedAt && !lastRequest.repliedAt) {
+            // This is subjective, let's say "newly opened" means opened but not replied
+            newlyOpened++;
+          }
+        } else if (claim.status === 'Information Submitted') {
+          // Awaiting Review
+          unresolved++;
+        }
+      }
+    });
+
+    return res.status(200).json({ pendingReplies, newlyOpened, unresolved });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 

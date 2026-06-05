@@ -1,6 +1,7 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { 
   LayoutDashboard, 
   ShieldAlert, 
@@ -15,7 +16,8 @@ import {
   Bell, 
   Search,
   ChevronRight,
-  Globe
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { getUserAvatarSrc, getUserInitials } from '../utils/userAvatar';
@@ -23,8 +25,26 @@ import { getUserAvatarSrc, getUserInitials } from '../utils/userAvatar';
 const DashboardLayout = ({ children, title }) => {
   const { user, logout, openAuth } = useContext(AuthContext);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [commStats, setCommStats] = useState({ pendingReplies: 0, newlyOpened: 0, unresolved: 0 });
   const location = useLocation();
   const navigate = useNavigate();
+
+  const fetchCommStats = async () => {
+    if (user?.role === 'officer') {
+      try {
+        const res = await axios.get('http://localhost:5000/api/claims/stats', { withCredentials: true });
+        setCommStats(res.data);
+      } catch (err) {
+        console.error('Failed to fetch communication telemetry:', err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchCommStats();
+    const interval = setInterval(fetchCommStats, 30000); // Sync every 30s
+    return () => clearInterval(interval);
+  }, [user]);
 
   const menuItems = [
     { 
@@ -50,6 +70,13 @@ const DashboardLayout = ({ children, title }) => {
       icon: ShieldAlert, 
       path: '/officer', 
       roles: ['officer'] 
+    },
+    { 
+      label: 'Communication Center', 
+      icon: MessageSquare, 
+      path: '/communication-center', 
+      roles: ['officer'],
+      badge: commStats.unresolved > 0 ? commStats.unresolved : null
     },
     { 
       label: 'Hospital Intake', 
@@ -128,7 +155,12 @@ const DashboardLayout = ({ children, title }) => {
                     </motion.span>
                   )}
                 </AnimatePresence>
-                {isActive && isSidebarOpen && (
+                {item.badge && isSidebarOpen && (
+                  <span className="ml-auto bg-blue-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg shadow-blue-500/20">
+                    {item.badge}
+                  </span>
+                )}
+                {isActive && isSidebarOpen && !item.badge && (
                   <ChevronRight className="w-4 h-4 ml-auto text-blue-400/50" />
                 )}
               </Link>

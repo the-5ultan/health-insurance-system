@@ -6,11 +6,15 @@ const upload = require('../middleware/upload');
 const { 
   submitClaim, getClaimsQueue, updateClaimStatus, 
   getMyPolicy, getPolicies, createPolicy,
-  requestMoreInfo, submitClaimResponse
+  requestMoreInfo, submitClaimResponse,
+  markInteractionReceived, markInteractionOpened, getCommunicationStats
 } = require('../controllers/claimController');
 
 // Debug Ping
 router.get('/ping', (req, res) => res.json({ status: 'Claim Node Active', timestamp: new Date() }));
+
+// Communication Stats
+router.get('/stats', auth, checkRole('officer'), getCommunicationStats);
 
 // Static Routes (Literal matches first)
 router.post('/submit', auth, checkRole('hospital', 'policyholder'), upload.array('documents', 5), submitClaim);
@@ -29,6 +33,9 @@ router.post('/:id/respond-info', auth, checkRole('hospital'), (req, res, next) =
   console.log(`[ClaimRoutes] HIT: POST /api/claims/${req.params.id}/respond-info`);
   next();
 }, upload.array('attachments', 5), submitClaimResponse);
+
+router.patch('/:claimId/interactions/:interactionId/receive', auth, checkRole('hospital'), markInteractionReceived);
+router.patch('/:claimId/interactions/:interactionId/open', auth, checkRole('hospital'), markInteractionOpened);
 
 // General Parameterized Routes
 router.patch('/:id/status', auth, checkRole('officer', 'admin'), updateClaimStatus);

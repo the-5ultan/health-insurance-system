@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Services from './components/Services';
 import OfficerDashboard from './pages/OfficerDashboard';
+import CommunicationCenter from './pages/CommunicationCenter';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUserManagement from './pages/AdminUserManagement';
 import AdminPolicyManagement from './pages/AdminPolicyManagement';
@@ -101,6 +102,12 @@ const AppContent = () => {
         } />
         
         {/* Restore Officer Adjudication */}
+        <Route path="/communication-center" element={
+          <ProtectedRoute allowedRoles={['officer']}>
+            <CommunicationCenter />
+          </ProtectedRoute>
+        } />
+
         <Route path="/officer" element={
           <ProtectedRoute allowedRoles={['officer']}>
             <OfficerDashboard />

@@ -21,7 +21,12 @@ const ClaimSchema = new mongoose.Schema({
     message: String,
     requestedDocumentTypes: [String],
     attachments: [String], // for hospital response files
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    // Tracking fields for 'request' type
+    receivedAt: Date,
+    openedAt: Date,
+    repliedAt: Date,
+    receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }],
   officerNotes: { type: String, default: '' },
   fraudScore: { type: Number, default: 0 },
