@@ -153,6 +153,7 @@ exports.getClaimsQueue = async (req, res) => {
     const claims = await Claim.find(query)
       .populate('policyId')
       .populate('hospitalId', 'firstName lastName email')
+      .populate('interactions.senderId', 'firstName lastName username')
       .sort({ createdAt: -1 });
 
     return res.status(200).json(claims);

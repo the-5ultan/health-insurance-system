@@ -179,19 +179,47 @@ export default function HospitalDashboard() {
 
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-8">
                 {/* Officer's Request */}
-                <div className="p-5 rounded-2xl bg-blue-500/5 border border-blue-500/10">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block mb-2">Adjudication Directive</span>
-                  <p className="text-sm text-white/70 italic leading-relaxed">
-                    "{selectedClaim.interactions?.filter(i => i.type === 'request').pop()?.message}"
-                  </p>
-                  {selectedClaim.interactions?.filter(i => i.type === 'request').pop()?.requestedDocumentTypes?.length > 0 && (
-                    <div className="mt-4">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-white/30 block mb-2">Required Items</span>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedClaim.interactions?.filter(i => i.type === 'request').pop()?.requestedDocumentTypes.map((d, i) => (
-                          <span key={i} className="px-2 py-1 rounded-md bg-white/5 border border-white/5 text-[9px] font-bold text-white/50">{d}</span>
-                        ))}
+                <div className="p-6 rounded-2xl bg-blue-500/5 border border-blue-500/10 space-y-4">
+                  {selectedClaim.interactions?.filter(i => i.type === 'request').slice(-1).map((lastReq, i) => (
+                    <div key={i} className="space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block mb-1">Adjudication Officer</span>
+                          <p className="text-xs font-bold text-white/90">
+                            {lastReq.senderId?.firstName || 'System'} {lastReq.senderId?.lastName || 'Authority'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/30 block mb-1">Requested On</span>
+                          <p className="text-[10px] font-mono text-white/50">
+                            {new Date(lastReq.createdAt).toLocaleString()}
+                          </p>
+                        </div>
                       </div>
+
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block mb-2">Directive Message</span>
+                        <p className="text-sm text-white/70 italic leading-relaxed bg-black/20 p-4 rounded-xl border border-white/5">
+                          "{lastReq.message || 'No specific instructions provided.'}"
+                        </p>
+                      </div>
+
+                      {lastReq.requestedDocumentTypes?.length > 0 && (
+                        <div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-white/30 block mb-2">Required Items</span>
+                          <div className="flex flex-wrap gap-2">
+                            {lastReq.requestedDocumentTypes.map((d, idx) => (
+                              <span key={idx} className="px-2 py-1 rounded-md bg-white/5 border border-white/5 text-[9px] font-bold text-white/50">{d}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {(!selectedClaim.interactions || selectedClaim.interactions.filter(i => i.type === 'request').length === 0) && (
+                    <div className="text-center py-4">
+                      <p className="text-xs text-white/20 font-bold uppercase tracking-widest italic">Synchronizing interaction data...</p>
                     </div>
                   )}
                 </div>
